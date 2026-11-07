@@ -12,18 +12,43 @@
     return names[type] || ("Type " + String(type));
   }
 
-  // Read only channel objects already cached in the official client stores.
-  // No network requests, permission changes, message reads, or token access.
+  // Read-only inspection of local Discord stores only. No network, message access,
+  // permission changes, navigation, or token access.
+  function readCachedChannel(store, id) {
+    if (!store) return null;
+    const methods = ["getChannel","getChannelById","getCachedChannel"];
+    for (const method of methods) {
+      try {
+        if (typeof store[method] === "function") {
+          const value = store[method](id);
+          if (value && String(value.id || value.channelId || "") === String(id)) return value;
+        }
+      } catch (_) {}
+    }
+    return null;
+  }
+
+  function normalizeOverwrites(channel) {
+    let list = channel.permissionOverwrites || channel.permission_overwrites || [];
+    if (!Array.isArray(list)) list = Object.keys(list).map(key => list[key]);
+    return list.filter(Boolean).map(item => ({
+      targetId: String(item.id || item.target_id || item.targetId || "unknown"),
+      targetType: Number(item.type) === 1 ? "user" : Number(item.type) === 0 ? "role" : "unknown",
+      allow: String(item.allow == null ? "" : item.allow),
+      deny: String(item.deny == null ? "" : item.deny)
+    }));
+  }
+
   function scan() {
     const guildStore = getStore("GuildStore");
     const channelStore = getStore("ChannelStore");
+    const guildChannelStore = getStore("GuildChannelStore");
     if (!guildStore || typeof guildStore.getGuilds !== "function") throw new Error("GuildStore is unavailable. No data was collected.");
     if (!channelStore || typeof channelStore.getMutableGuildChannelsForGuild !== "function") throw new Error("ChannelStore is unavailable. No data was collected.");
 
     const guilds = guildStore.getGuilds() || {};
     const results = [];
-    let total = 0;
-    let skipped = 0;
+    let total = 0, skipped = 0, enriched = 0, unresolved = 0;
     Object.keys(guilds).forEach(guildId => {
       const guild = guilds[guildId] || {};
       let raw;
@@ -31,22 +56,35 @@
       const channels = Array.isArray(raw) ? raw : Object.keys(raw).map(key => raw[key]);
       const valid = channels.filter(ch => ch && ch.id);
       const categories = {};
-      valid.forEach(ch => { if (ch.type === 4) categories[ch.id] = ch.name || "Unnamed category"; });
-      const items = valid.sort((a,b) => (a.position || 0) - (b.position || 0)).slice(0,500).map(ch => {
-        let overwrites = ch.permissionOverwrites || ch.permission_overwrites || [];
-        if (!Array.isArray(overwrites)) overwrites = Object.keys(overwrites).map(key => overwrites[key]);
+      valid.forEach(ch => { if (Number(ch.type) === 4) categories[String(ch.id)] = ch.name || "Unnamed category"; });
+      const items = valid.sort((a,b) => Number(a.position || 0) - Number(b.position || 0)).slice(0,500).map(original => {
+        let ch = original;
+        let recoveredFrom = "";
+        if (!ch.name || /^hidden channel$/i.test(String(ch.name))) {
+          const recovered = readCachedChannel(channelStore, ch.id) || readCachedChannel(guildChannelStore, ch.id);
+          if (recovered && recovered.name && !/^hidden channel$/i.test(String(recovered.name))) {
+            ch = Object.assign({}, original, recovered);
+            recoveredFrom = "another local store reference";
+            enriched++;
+          } else unresolved++;
+        }
+        const overwrites = normalizeOverwrites(ch);
         return {
-          name: String(ch.name || "Unnamed channel"), id: String(ch.id), type: channelType(ch.type),
-          category: ch.parent_id ? (categories[ch.parent_id] || "Category metadata unavailable") : "No category",
-          categoryId: ch.parent_id ? String(ch.parent_id) : "", position: Number(ch.position || 0), overwriteCount: overwrites.length,
-          explicitRoleOverrides: overwrites.filter(x => Number(x && x.type) === 0).length,
-          explicitUserOverrides: overwrites.filter(x => Number(x && x.type) === 1).length
+          name: String(ch.name || "Hidden Channel"), id: String(ch.id), type: channelType(ch.type),
+          rawType: Number(ch.type), category: ch.parent_id ? (categories[String(ch.parent_id)] || "Category metadata unavailable") : "No category",
+          categoryId: ch.parent_id ? String(ch.parent_id) : "", position: Number(ch.position || 0),
+          topic: String(ch.topic || ""), nsfw: !!ch.nsfw, lastMessageId: String(ch.last_message_id || ""),
+          createdAt: ch.id && /^\\d{17,20}$/.test(String(ch.id)) ? new Date(Number((BigInt(ch.id) >> 22n) + 1420070400000n)).toISOString() : "",
+          overwriteCount: overwrites.length,
+          explicitRoleOverrides: overwrites.filter(x => x.targetType === "role").length,
+          explicitUserOverrides: overwrites.filter(x => x.targetType === "user").length,
+          overwrites, recoveredFrom
         };
       });
       total += items.length;
       if (items.length) results.push({name:String(guild.name || "Server"), id:String(guildId), channels:items});
     });
-    return {guilds:results,total,skipped,scannedAt:new Date().toLocaleString()};
+    return {guilds:results,total,skipped,enriched,unresolved,scannedAt:new Date().toLocaleString()};
   }
 
   function text(value, style, key) {
@@ -121,7 +159,7 @@
     if (!report && !error) children.push(text("Tap Scan cached channel metadata to begin.",{color:"#B9BBC1"},"empty"));
     if (report) {
       children.push(React.createElement(RN.Pressable,{key:"open-overlay",onPress:() => setOverlay(true),style:{backgroundColor:"#3B3D44",padding:12,borderRadius:8,marginBottom:12}},text("Open local channel overlay",{fontWeight:"700",textAlign:"center",marginBottom:0},"open-overlay-label")));
-      children.push(text("Servers: "+report.guilds.length+"  |  Cached channels: "+report.total+"  |  "+report.scannedAt,{fontWeight:"700",marginBottom:10},"summary"));
+      children.push(text("Servers: "+report.guilds.length+"  |  Cached channels: "+report.total+"  |  Names recovered: "+report.enriched+"  |  Still hidden: "+report.unresolved,{fontWeight:"700",marginBottom:10},"summary"));
       if (!report.total) children.push(text("No channel metadata was found in the client cache. Discord may not have delivered hidden-channel metadata to this account.",{color:"#F0B232"},"none"));
       report.guilds.forEach(guild => {
         children.push(text(guild.name+"  |  Server ID: "+guild.id,{fontSize:15,fontWeight:"700",marginTop:12,marginBottom:7},"guild-"+guild.id));
@@ -135,7 +173,7 @@
     const overlayChildren = [];
     if (report) {
       overlayChildren.push(text("Cached channel overview",{fontSize:19,fontWeight:"700",marginBottom:6},"overlay-title"));
-      overlayChildren.push(text("Local metadata only. Locked entries are labels, not links. No messages or private member roster are read.",{color:"#B9BBC1",fontSize:12,marginBottom:14},"overlay-note"));
+      overlayChildren.push(text("Expanded local cache inspection. Locked entries are labels, not links. No messages or private member roster are read. Permission targets are IDs, not a verified list of people with access.",{color:"#B9BBC1",fontSize:12,marginBottom:14},"overlay-note"));
       report.guilds.forEach(guild => {
         overlayChildren.push(text(guild.name,{fontSize:16,fontWeight:"700",marginTop:10,marginBottom:8},"overlay-guild-"+guild.id));
         let lastCategory = null;
@@ -147,7 +185,11 @@
           overlayChildren.push(React.createElement(RN.View,{key:"overlay-channel-"+ch.id,style:{paddingVertical:7,paddingHorizontal:9,marginBottom:4,backgroundColor:"#292B2F",borderRadius:7}},
             text("🔒  "+ch.name,{fontWeight:"600",marginBottom:3},"overlay-name-"+ch.id),
             text(ch.type+"  ·  Position "+ch.position,{color:"#B9BBC1",fontSize:11,marginBottom:2},"overlay-type-"+ch.id),
-            text("Cached permission overrides: "+ch.overwriteCount+" (roles: "+ch.explicitRoleOverrides+", users: "+ch.explicitUserOverrides+")",{color:"#AEB2B8",fontSize:10,marginBottom:0},"overlay-meta-"+ch.id)
+            text("Permission overrides: "+ch.overwriteCount+" (roles: "+ch.explicitRoleOverrides+", user-targets: "+ch.explicitUserOverrides+")",{color:"#AEB2B8",fontSize:10,marginBottom:2},"overlay-meta-"+ch.id),
+            ch.topic ? text("Topic: "+ch.topic,{color:"#AEB2B8",fontSize:10,marginBottom:2},"overlay-topic-"+ch.id) : null,
+            text("ID: "+ch.id+"  ·  Category ID: "+(ch.categoryId || "none"),{color:"#AEB2B8",fontSize:10,marginBottom:2},"overlay-ids-"+ch.id),
+            ch.overwrites.slice(0,20).map((ow,i) => text(ow.targetType+" target "+ow.targetId+"  |  allow "+(ow.allow || "—")+"  |  deny "+(ow.deny || "—"),{color:"#92979F",fontSize:9,marginBottom:1},"overlay-ow-"+ch.id+"-"+i)),
+            ch.recoveredFrom ? text("Name recovered from "+ch.recoveredFrom,{color:"#57C58A",fontSize:9,marginBottom:0},"overlay-recovered-"+ch.id) : null
           ));
         });
       });
