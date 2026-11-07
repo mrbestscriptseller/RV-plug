@@ -38,7 +38,9 @@
         return {
           name: String(ch.name || "Unnamed channel"), id: String(ch.id), type: channelType(ch.type),
           category: ch.parent_id ? (categories[ch.parent_id] || "Category metadata unavailable") : "No category",
-          categoryId: ch.parent_id ? String(ch.parent_id) : "", overwriteCount: overwrites.length
+          categoryId: ch.parent_id ? String(ch.parent_id) : "", position: Number(ch.position || 0), overwriteCount: overwrites.length,
+          explicitRoleOverrides: overwrites.filter(x => Number(x && x.type) === 0).length,
+          explicitUserOverrides: overwrites.filter(x => Number(x && x.type) === 1).length
         };
       });
       total += items.length;
@@ -96,6 +98,7 @@
     const [report,setReport] = React.useState(null);
     const [error,setError] = React.useState(null);
     const [probe,setProbe] = React.useState(null);
+    const [overlay,setOverlay] = React.useState(false);
     const children = [
       text("Metadata Lens",{fontSize:20,fontWeight:"700",marginBottom:8},"title"),
       text("Read-only scan of channel metadata already cached by Discord on this device. It may include channels you cannot open if their metadata was delivered to the client. It cannot discover metadata Discord has not sent, read messages, or bypass server permissions.",{color:"#B9BBC1",marginBottom:14},"description"),
@@ -117,6 +120,7 @@
     if (error) children.push(text("Scan stopped: "+error,{color:"#F0B232"},"error"));
     if (!report && !error) children.push(text("Tap Scan cached channel metadata to begin.",{color:"#B9BBC1"},"empty"));
     if (report) {
+      children.push(React.createElement(RN.Pressable,{key:"open-overlay",onPress:() => setOverlay(true),style:{backgroundColor:"#3B3D44",padding:12,borderRadius:8,marginBottom:12}},text("Open local channel overlay",{fontWeight:"700",textAlign:"center",marginBottom:0},"open-overlay-label")));
       children.push(text("Servers: "+report.guilds.length+"  |  Cached channels: "+report.total+"  |  "+report.scannedAt,{fontWeight:"700",marginBottom:10},"summary"));
       if (!report.total) children.push(text("No channel metadata was found in the client cache. Discord may not have delivered hidden-channel metadata to this account.",{color:"#F0B232"},"none"));
       report.guilds.forEach(guild => {
@@ -128,7 +132,41 @@
       });
       if (report.skipped) children.push(text("Guilds skipped because their channel cache could not be read: "+report.skipped,{color:"#B9BBC1"},"skipped"));
     }
-    return React.createElement(RN.ScrollView,{contentContainerStyle:{padding:16}},children);
+    const overlayChildren = [];
+    if (report) {
+      overlayChildren.push(text("Cached channel overview",{fontSize:19,fontWeight:"700",marginBottom:6},"overlay-title"));
+      overlayChildren.push(text("Local metadata only. Locked entries are labels, not links. No messages or private member roster are read.",{color:"#B9BBC1",fontSize:12,marginBottom:14},"overlay-note"));
+      report.guilds.forEach(guild => {
+        overlayChildren.push(text(guild.name,{fontSize:16,fontWeight:"700",marginTop:10,marginBottom:8},"overlay-guild-"+guild.id));
+        let lastCategory = null;
+        guild.channels.filter(ch => ch.type !== "Category").forEach(ch => {
+          if (ch.category !== lastCategory) {
+            lastCategory = ch.category;
+            overlayChildren.push(text("▾ "+lastCategory,{color:"#B9BBC1",fontWeight:"700",marginTop:8,marginBottom:5},"overlay-cat-"+guild.id+"-"+ch.category));
+          }
+          overlayChildren.push(React.createElement(RN.View,{key:"overlay-channel-"+ch.id,style:{paddingVertical:7,paddingHorizontal:9,marginBottom:4,backgroundColor:"#292B2F",borderRadius:7}},
+            text("🔒  "+ch.name,{fontWeight:"600",marginBottom:3},"overlay-name-"+ch.id),
+            text(ch.type+"  ·  Position "+ch.position,{color:"#B9BBC1",fontSize:11,marginBottom:2},"overlay-type-"+ch.id),
+            text("Cached permission overrides: "+ch.overwriteCount+" (roles: "+ch.explicitRoleOverrides+", users: "+ch.explicitUserOverrides+")",{color:"#AEB2B8",fontSize:10,marginBottom:0},"overlay-meta-"+ch.id)
+          ));
+        });
+      });
+    } else {
+      overlayChildren.push(text("Run the cached metadata scan first.",{color:"#B9BBC1"},"overlay-empty"));
+    }
+    const modal = React.createElement(RN.Modal,{visible:overlay,transparent:true,animationType:"slide",onRequestClose:() => setOverlay(false)},
+      React.createElement(RN.View,{style:{flex:1,backgroundColor:"rgba(0,0,0,0.88)",paddingTop:34,paddingHorizontal:12,paddingBottom:16}},
+        React.createElement(RN.View,{style:{flexDirection:"row",justifyContent:"space-between",alignItems:"center",marginBottom:10}},
+          text("Metadata Lens · Overlay",{fontWeight:"700",fontSize:16,marginBottom:0},"overlay-heading"),
+          React.createElement(RN.Pressable,{onPress:() => setOverlay(false),style:{padding:9,backgroundColor:"#3B3D44",borderRadius:7}},text("Close",{fontWeight:"700",marginBottom:0},"overlay-close"))
+        ),
+        React.createElement(RN.ScrollView,{contentContainerStyle:{paddingBottom:28}},overlayChildren)
+      )
+    );
+    return React.createElement(React.Fragment,null,
+      React.createElement(RN.ScrollView,{contentContainerStyle:{padding:16}},children),
+      modal
+    );
   }
 
   return {
