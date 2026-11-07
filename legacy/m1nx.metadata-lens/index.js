@@ -51,18 +51,53 @@
     return React.createElement(RN.Text, {key, style:Object.assign({color:"#FFFFFF",fontSize:13,marginBottom:6},style || {})}, String(value));
   }
 
+  function probeSidebar() {
+    const names = ["GuildChannelList","ChannelList","ChannelListContainer","ChannelCategory","ChannelItem","ChannelRow","ChannelListItem","GuildChannelListItem","ChannelCategoryItem","Channel"];
+    const found = [];
+    names.forEach(name => {
+      try {
+        const matches = vendetta.metro.findByNameAll(name);
+        if (Array.isArray(matches)) matches.forEach((item,index) => {
+          if (item) found.push(name+" ["+index+"]: "+String(item.displayName || item.name || item.type && (item.type.displayName || item.type.name) || typeof item));
+        });
+        else if (matches) found.push(name+": "+String(matches.displayName || matches.name || typeof matches));
+      } catch (_) {}
+      try {
+        const matches = vendetta.metro.findByDisplayNameAll(name);
+        if (Array.isArray(matches)) matches.forEach((item,index) => {
+          if (item) found.push(name+" display ["+index+"]: "+String(item.displayName || item.name || typeof item));
+        });
+        else if (matches) found.push(name+" display: "+String(matches.displayName || matches.name || typeof matches));
+      } catch (_) {}
+    });
+    ["ChannelStore","GuildStore","GuildChannelStore"].forEach(name => {
+      try { const store = getStore(name); found.push("Store "+name+": "+(store ? Object.keys(store).slice(0,30).join(", ") : "not found")); } catch (_) {}
+    });
+    return found.length ? found : ["No known channel-list component names matched. The exact UI component needs deeper runtime discovery."];
+  }
+
   function Settings() {
     const [report,setReport] = React.useState(null);
     const [error,setError] = React.useState(null);
+    const [probe,setProbe] = React.useState(null);
     const children = [
       text("Metadata Lens",{fontSize:20,fontWeight:"700",marginBottom:8},"title"),
       text("Read-only scan of channel metadata already cached by Discord on this device. It may include channels you cannot open if their metadata was delivered to the client. It cannot discover metadata Discord has not sent, read messages, or bypass server permissions.",{color:"#B9BBC1",marginBottom:14},"description"),
+      React.createElement(RN.Pressable,{
+        key:"probe",
+        onPress:() => { try { setProbe(probeSidebar()); } catch(e) { setProbe(["Probe failed: "+String(e && e.message || e)]); } },
+        style:{backgroundColor:"#3B3D44",padding:12,borderRadius:8,marginBottom:12}
+      },text("Check native sidebar compatibility",{fontWeight:"700",textAlign:"center",marginBottom:0},"probe-label")),
       React.createElement(RN.Pressable,{
         key:"scan",
         onPress:() => { try { setReport(scan()); setError(null); } catch(e) { setReport(null); setError(String(e && e.message || e)); } },
         style:{backgroundColor:"#5865F2",padding:12,borderRadius:8,marginBottom:12}
       },text("Scan cached channel metadata",{fontWeight:"700",textAlign:"center",marginBottom:0},"scan-label"))
     ];
+    if (probe) {
+      children.push(text("Sidebar compatibility results",{fontWeight:"700",marginTop:12,marginBottom:8},"probe-title"));
+      probe.forEach((line,index) => children.push(text(line,{color:"#B9BBC1",fontSize:11,marginBottom:5},"probe-"+index)));
+    }
     if (error) children.push(text("Scan stopped: "+error,{color:"#F0B232"},"error"));
     if (!report && !error) children.push(text("Tap Scan cached channel metadata to begin.",{color:"#B9BBC1"},"empty"));
     if (report) {
