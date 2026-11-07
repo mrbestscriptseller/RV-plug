@@ -56,41 +56,40 @@
     const modules = vendetta.metro && vendetta.metro.modules;
     if (!modules || typeof modules !== "object") return ["Metro module registry is unavailable."];
 
+    const exact = /channel.?list|list.?channel|guild.?channel|channel.?category|category.?channel|channel.?item|channel.?row|sidebar.?channel|guild.?sidebar/i;
     const ids = Object.keys(modules);
-    let inspected = 0;
     ids.forEach(id => {
       const mod = modules[id];
       if (!mod) return;
       const filePath = String(mod.__filePath || mod.path || mod.verboseName || "");
       const exports = mod.publicModule && mod.publicModule.exports;
       if (!exports || (typeof exports !== "object" && typeof exports !== "function")) return;
-      const keys = Object.keys(exports);
-      const defaultExport = exports.default;
       const labels = [];
-      keys.forEach(key => {
+      Object.keys(exports).forEach(key => {
         const value = exports[key];
         const displayName = value && (value.displayName || value.name || value.type && (value.type.displayName || value.type.name));
-        if (/channel|guild|category|sidebar|thread/i.test(key) || /channel|guild|category|sidebar|thread/i.test(String(displayName || ""))) {
-          labels.push(key + (displayName ? " => " + String(displayName) : ""));
-        }
+        const descriptor = key + (displayName ? " => " + String(displayName) : "");
+        if (exact.test(descriptor)) labels.push(descriptor);
       });
-      if (defaultExport) {
-        const displayName = defaultExport.displayName || defaultExport.name || defaultExport.type && (defaultExport.type.displayName || defaultExport.type.name);
-        if (/channel|guild|category|sidebar|thread/i.test(String(displayName || ""))) labels.push("default => " + String(displayName));
+      const def = exports.default;
+      if (def) {
+        const displayName = def.displayName || def.name || def.type && (def.type.displayName || def.type.name);
+        const descriptor = "default" + (displayName ? " => " + String(displayName) : "");
+        if (exact.test(descriptor)) labels.push(descriptor);
       }
-      if (/channel|guild|category|sidebar|thread/i.test(filePath) || labels.length) {
-        found.push("Module " + id + " | " + (filePath || "(no source path)") + " | " + (labels.slice(0,12).join(", ") || keys.slice(0,12).join(", ")));
-        inspected++;
+      if (exact.test(filePath) || labels.length) {
+        found.push("Module " + id + " | " + (filePath || "(no source path)") + " | " + (labels.slice(0,8).join(", ") || "matching source path; exports: " + Object.keys(exports).slice(0,10).join(", ")));
       }
     });
-    const storeNames = ["ChannelStore","GuildStore","GuildChannelStore"];
-    storeNames.forEach(name => {
+
+    const stores = ["ChannelStore","GuildStore","GuildChannelStore"];
+    stores.forEach(name => {
       try {
         const store = getStore(name);
-        found.push("Store " + name + ": " + (store ? Object.keys(store).slice(0,24).join(", ") : "not found"));
+        found.push("Store " + name + ": " + (store ? Object.keys(store).slice(0,18).join(", ") : "not found"));
       } catch (_) {}
     });
-    return found.length ? found.slice(0,80) : ["No loaded channel-related module exports found. Open a server and its channel list, then run this check again."];
+    return found.length ? found.slice(0,45) : ["No exact channel-list/category component names found. Open the target server so its sidebar is visible, then run this check again."];
   }
 
   function Settings() {
