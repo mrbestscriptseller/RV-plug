@@ -74,7 +74,7 @@
           rawType: Number(ch.type), category: ch.parent_id ? (categories[String(ch.parent_id)] || "Category metadata unavailable") : "No category",
           categoryId: ch.parent_id ? String(ch.parent_id) : "", position: Number(ch.position || 0),
           topic: String(ch.topic || ""), nsfw: !!ch.nsfw, lastMessageId: String(ch.last_message_id || ""),
-          createdAt: ch.id && /^\\d{17,20}$/.test(String(ch.id)) ? new Date(Number((BigInt(ch.id) >> 22n) + 1420070400000n)).toISOString() : "",
+          createdAt: ch.id && /^\\d{17,20}$/.test(String(ch.id)) ? new Date(Math.floor(Number(ch.id) / 4194304) + 1420070400000).toISOString() : "",
           overwriteCount: overwrites.length,
           explicitRoleOverrides: overwrites.filter(x => x.targetType === "role").length,
           explicitUserOverrides: overwrites.filter(x => x.targetType === "user").length,
