@@ -1,0 +1,9 @@
+{
+  "$meta": {
+    "name": "Metadata Lens",
+    "description": "Read-only channel metadata inspection for Revenge Classic."
+  },
+  "m1nx.metadata-lens": {
+    "version": "0.1.0"
+  }
+}
