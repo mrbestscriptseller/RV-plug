@@ -2,10 +2,10 @@
   "spec": 3,
   "type": "plugin",
   "id": "m1nx.metadata-lens",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "display": {
     "name": "Metadata Lens",
-    "description": "Read-only inspection of accessible channel IDs, types, category relationships, and permission-overwrite counts.",
+    "description": "Read-only inspection of channel metadata already accessible to the logged-in account.",
     "authors": [
       {
         "name": "m1nx799"
