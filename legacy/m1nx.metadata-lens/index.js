@@ -36,7 +36,7 @@
       let raw;
       try { raw = channelStore.getMutableGuildChannelsForGuild(guildId) || {}; } catch (_) { return; }
       const channels = Array.isArray(raw) ? raw : Object.keys(raw).map(key => raw[key]);
-      const valid = channels.filter(ch => ch && ch.id && String(ch.guild_id) === String(guildId));
+      const valid = channels.filter(ch => ch && ch.id);
       const categories = {};
       valid.forEach(ch => { if (ch.type === 4) categories[ch.id] = ch.name || "Unnamed category"; });
       const visible = valid.filter(ch => canView(permissionStore, ch)).sort((a,b) => (a.position || 0) - (b.position || 0)).slice(0,250);
