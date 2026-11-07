@@ -1,0 +1,12 @@
+{
+  "name": "Metadata Lens",
+  "description": "Read-only inspection of channel metadata already accessible to the logged-in account.",
+  "authors": [
+    {
+      "name": "m1nx799"
+    }
+  ],
+  "main": "index.js",
+  "hash": "0000000000000000000000000000000000000000000000000000000000000000",
+  "vendetta": {}
+}
