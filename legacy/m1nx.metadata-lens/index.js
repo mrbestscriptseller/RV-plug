@@ -52,28 +52,45 @@
   }
 
   function probeSidebar() {
-    const names = ["GuildChannelList","ChannelList","ChannelListContainer","ChannelCategory","ChannelItem","ChannelRow","ChannelListItem","GuildChannelListItem","ChannelCategoryItem","Channel"];
     const found = [];
-    names.forEach(name => {
+    const modules = vendetta.metro && vendetta.metro.modules;
+    if (!modules || typeof modules !== "object") return ["Metro module registry is unavailable."];
+
+    const ids = Object.keys(modules);
+    let inspected = 0;
+    ids.forEach(id => {
+      const mod = modules[id];
+      if (!mod) return;
+      const filePath = String(mod.__filePath || mod.path || mod.verboseName || "");
+      const exports = mod.publicModule && mod.publicModule.exports;
+      if (!exports || (typeof exports !== "object" && typeof exports !== "function")) return;
+      const keys = Object.keys(exports);
+      const defaultExport = exports.default;
+      const labels = [];
+      keys.forEach(key => {
+        const value = exports[key];
+        const displayName = value && (value.displayName || value.name || value.type && (value.type.displayName || value.type.name));
+        if (/channel|guild|category|sidebar|thread/i.test(key) || /channel|guild|category|sidebar|thread/i.test(String(displayName || ""))) {
+          labels.push(key + (displayName ? " => " + String(displayName) : ""));
+        }
+      });
+      if (defaultExport) {
+        const displayName = defaultExport.displayName || defaultExport.name || defaultExport.type && (defaultExport.type.displayName || defaultExport.type.name);
+        if (/channel|guild|category|sidebar|thread/i.test(String(displayName || ""))) labels.push("default => " + String(displayName));
+      }
+      if (/channel|guild|category|sidebar|thread/i.test(filePath) || labels.length) {
+        found.push("Module " + id + " | " + (filePath || "(no source path)") + " | " + (labels.slice(0,12).join(", ") || keys.slice(0,12).join(", ")));
+        inspected++;
+      }
+    });
+    const storeNames = ["ChannelStore","GuildStore","GuildChannelStore"];
+    storeNames.forEach(name => {
       try {
-        const matches = vendetta.metro.findByNameAll(name);
-        if (Array.isArray(matches)) matches.forEach((item,index) => {
-          if (item) found.push(name+" ["+index+"]: "+String(item.displayName || item.name || item.type && (item.type.displayName || item.type.name) || typeof item));
-        });
-        else if (matches) found.push(name+": "+String(matches.displayName || matches.name || typeof matches));
-      } catch (_) {}
-      try {
-        const matches = vendetta.metro.findByDisplayNameAll(name);
-        if (Array.isArray(matches)) matches.forEach((item,index) => {
-          if (item) found.push(name+" display ["+index+"]: "+String(item.displayName || item.name || typeof item));
-        });
-        else if (matches) found.push(name+" display: "+String(matches.displayName || matches.name || typeof matches));
+        const store = getStore(name);
+        found.push("Store " + name + ": " + (store ? Object.keys(store).slice(0,24).join(", ") : "not found"));
       } catch (_) {}
     });
-    ["ChannelStore","GuildStore","GuildChannelStore"].forEach(name => {
-      try { const store = getStore(name); found.push("Store "+name+": "+(store ? Object.keys(store).slice(0,30).join(", ") : "not found")); } catch (_) {}
-    });
-    return found.length ? found : ["No known channel-list component names matched. The exact UI component needs deeper runtime discovery."];
+    return found.length ? found.slice(0,80) : ["No loaded channel-related module exports found. Open a server and its channel list, then run this check again."];
   }
 
   function Settings() {
