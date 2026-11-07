@@ -1,179 +1,66 @@
-var plugin = (function () {
-  var storage = bunny.plugin.createStorage();
-
-  function getStore(name) {
-    try {
-      return bunny.metro.findByStoreName(name);
-    } catch (_) {
-      return null;
-    }
+var plugin=function(n,o,d,p,r,c,h,b){"use strict";
+var storage=h.createStorage();
+var React=p.common.React;
+var RN=p.common.ReactNative;
+function store(name){try{return p.findByStoreName(name)}catch(e){return null}}
+function canView(permissionStore,channel){
+  try{return permissionStore.can(1024n,channel)===true}catch(e){
+    try{return permissionStore.can(1024,channel)===true}catch(e2){return false}
   }
-
-  function canViewChannel(permissionStore, channel) {
-    if (!permissionStore || typeof permissionStore.can !== "function") return null;
-    try {
-      return permissionStore.can(1024n, channel) === true;
-    } catch (_) {
-      try {
-        return permissionStore.can(1024, channel) === true;
-      } catch (_) {
-        return null;
-      }
-    }
-  }
-
-  function channelType(type) {
-    var types = {
-      0: "Text", 2: "Voice", 4: "Category", 5: "Announcement",
-      10: "Announcement thread", 11: "Public thread", 12: "Private thread",
-      13: "Stage", 15: "Forum", 16: "Media"
-    };
-    return types[type] || "Type " + String(type);
-  }
-
-  function scanMetadata() {
-    var guildStore = getStore("GuildStore");
-    var channelStore = getStore("ChannelStore");
-    var permissionStore = getStore("PermissionStore");
-
-    if (!guildStore || typeof guildStore.getGuilds !== "function") {
-      return { ok: false, message: "GuildStore is unavailable in this Revenge build." };
-    }
-    if (!channelStore || typeof channelStore.getMutableGuildChannelsForGuild !== "function") {
-      return { ok: false, message: "ChannelStore is unavailable in this Revenge build." };
-    }
-    if (!permissionStore || typeof permissionStore.can !== "function") {
-      return { ok: false, message: "PermissionStore is unavailable. No channel data was displayed because visibility could not be verified." };
-    }
-
-    var guilds = guildStore.getGuilds() || {};
-    var results = [];
-    var total = 0;
-    var omitted = 0;
-
-    Object.keys(guilds).forEach(function (guildId) {
-      var guild = guilds[guildId] || {};
-      var channelMap;
-      try {
-        channelMap = channelStore.getMutableGuildChannelsForGuild(guildId) || {};
-      } catch (_) {
-        return;
-      }
-
-      var channels = Object.values(channelMap).filter(function (channel) {
-        return channel && channel.id && String(channel.guild_id) === String(guildId);
-      });
-      var categories = {};
-      channels.forEach(function (channel) {
-        if (channel.type === 4) categories[channel.id] = channel.name || "Unnamed category";
-      });
-
-      var visible = channels.filter(function (channel) {
-        return canViewChannel(permissionStore, channel) === true;
-      }).sort(function (a, b) {
-        return (a.position || 0) - (b.position || 0);
-      });
-
-      if (visible.length) {
-        var entries = visible.map(function (channel) {
-          var overwrites = channel.permissionOverwrites || channel.permission_overwrites || [];
-          if (!Array.isArray(overwrites)) overwrites = Object.values(overwrites || {});
-          return {
-            id: String(channel.id),
-            name: String(channel.name || "Unnamed channel"),
-            type: channelType(channel.type),
-            parentId: channel.parent_id ? String(channel.parent_id) : null,
-            parentName: channel.parent_id ? (categories[channel.parent_id] || "Category metadata unavailable") : "No category",
-            permissionOverwriteCount: overwrites.length
-          };
-        });
-
-        var remaining = Math.max(0, 250 - total);
-        total += entries.length;
-        if (entries.length > remaining) {
-          omitted += entries.length - remaining;
-          entries = entries.slice(0, remaining);
-        }
-        if (entries.length) results.push({ id: String(guildId), name: String(guild.name || "Unnamed server"), channels: entries });
-      }
+}
+function typeName(type){
+  var names={0:"Text",2:"Voice",4:"Category",5:"Announcement",10:"Announcement thread",11:"Public thread",12:"Private thread",13:"Stage",15:"Forum",16:"Media"};
+  return names[type]||("Type "+String(type));
+}
+function scan(){
+  var gs=store("GuildStore"),cs=store("ChannelStore"),ps=store("PermissionStore");
+  if(!gs||typeof gs.getGuilds!=="function")throw new Error("GuildStore is unavailable in this build.");
+  if(!cs||typeof cs.getMutableGuildChannelsForGuild!=="function")throw new Error("ChannelStore is unavailable in this build.");
+  if(!ps||typeof ps.can!=="function")throw new Error("PermissionStore is unavailable. Scan stopped safely.");
+  var guilds=gs.getGuilds()||{},out=[],count=0;
+  Object.keys(guilds).forEach(function(gid){
+    var guild=guilds[gid]||{},map;
+    try{map=cs.getMutableGuildChannelsForGuild(gid)||{}}catch(e){return}
+    var channels=Array.isArray(map)?map:Object.keys(map).map(function(k){return map[k]});
+    channels=channels.filter(function(ch){return ch&&ch.id&&String(ch.guild_id)===String(gid)});
+    var cats={};
+    channels.forEach(function(ch){if(ch.type===4)cats[ch.id]=ch.name||"Unnamed category"});
+    var visible=channels.filter(function(ch){return canView(ps,ch)}).sort(function(a,b){return (a.position||0)-(b.position||0)});
+    if(!visible.length)return;
+    var items=visible.slice(0,200).map(function(ch){
+      var ow=ch.permissionOverwrites||ch.permission_overwrites||[];
+      if(!Array.isArray(ow))ow=Object.keys(ow).map(function(k){return ow[k]});
+      return {name:String(ch.name||"Unnamed channel"),id:String(ch.id),type:typeName(ch.type),parent:ch.parent_id?(cats[ch.parent_id]||"Category metadata unavailable"):"No category",parentId:ch.parent_id?String(ch.parent_id):"",overwrites:ow.length};
     });
-
-    return {
-      ok: true,
-      scannedAt: new Date().toISOString(),
-      guildCount: results.length,
-      channelCount: Math.min(total, 250),
-      omittedCount: omitted,
-      guilds: results
-    };
-  }
-
-  function text(React, RN, value, style) {
-    return React.createElement(RN.Text, {
-      style: style || { color: "#FFFFFF", fontSize: 13, marginBottom: 6 }
-    }, value);
-  }
-
-  return definePlugin({
-    start: function () {
-      storage.status = "Ready. Open Metadata Lens settings and tap Scan.";
-    },
-    stop: function () {},
-    SettingsComponent: function () {
-      var React = bunny.metro.common.React;
-      var RN = bunny.metro.common.ReactNative;
-      var Components = bunny.metro.common.components;
-      bunny.api.storage.useObservable([storage]);
-
-      var report = storage.report || null;
-      var children = [
-        text(React, RN, "Metadata Lens", { color: "#FFFFFF", fontSize: 20, fontWeight: "700", marginBottom: 8 }),
-        text(React, RN, "Read-only inspection of channel metadata already present in your account. It does not request hidden channels or bypass permissions.", { color: "#B9BBC1", fontSize: 13, marginBottom: 12 }),
-        React.createElement(RN.Pressable, {
-          key: "scan",
-          onPress: function () {
-            try {
-              storage.report = scanMetadata();
-            } catch (error) {
-              storage.report = { ok: false, message: "Scan failed: " + String(error && error.message || error) };
-            }
-          },
-          style: { backgroundColor: "#5865F2", paddingVertical: 12, paddingHorizontal: 16, borderRadius: 8, marginBottom: 14 }
-        }, text(React, RN, "Scan accessible channel metadata", { color: "#FFFFFF", fontSize: 14, fontWeight: "700", textAlign: "center", marginBottom: 0 }))
-      ];
-
-      if (!report) {
-        children.push(text(React, RN, storage.status || "No scan has been run yet.", { color: "#B9BBC1", fontSize: 13 }));
-      } else if (!report.ok) {
-        children.push(text(React, RN, report.message, { color: "#F0B232", fontSize: 13 }));
-      } else {
-        children.push(text(React, RN, "Servers: " + report.guildCount + "  |  Accessible channels: " + report.channelCount, { color: "#FFFFFF", fontSize: 14, fontWeight: "700", marginBottom: 4 }));
-        children.push(text(React, RN, "Scan time: " + report.scannedAt, { color: "#B9BBC1", fontSize: 11, marginBottom: 10 }));
-        report.guilds.forEach(function (guild) {
-          var rows = [
-            React.createElement(Components.TableRow, {
-              key: "guild-" + guild.id,
-              label: guild.name,
-              subLabel: "Server ID: " + guild.id,
-              disabled: true
-            })
-          ];
-          guild.channels.forEach(function (channel) {
-            rows.push(React.createElement(Components.TableRow, {
-              key: channel.id,
-              label: channel.name + "  ·  " + channel.type,
-              subLabel: "ID: " + channel.id + "\nCategory: " + channel.parentName + (channel.parentId ? " (" + channel.parentId + ")" : "") + "\nPermission overwrites: " + channel.permissionOverwriteCount,
-              disabled: true
-            }));
-          });
-          children.push(React.createElement(Components.TableRowGroup, { key: "group-" + guild.id, title: guild.name }, rows));
-        });
-        if (report.omittedCount > 0) {
-          children.push(text(React, RN, "Display limit reached. " + report.omittedCount + " additional accessible channels were not shown.", { color: "#B9BBC1", fontSize: 12 }));
-        }
-      }
-
-      return React.createElement(RN.ScrollView, { contentContainerStyle: { padding: 16 } }, children);
-    }
+    count+=items.length;
+    out.push({name:String(guild.name||"Server"),id:String(gid),channels:items});
   });
-})();
+  return {guilds:out,count:count,time:new Date().toLocaleString()};
+}
+function txt(value,style,key){return React.createElement(RN.Text,{key:key,style:style||{color:"#FFFFFF",fontSize:13,marginBottom:6}},String(value))}
+return definePlugin({
+ start:function(){storage.report=null;},
+ stop:function(){},
+ SettingsComponent:function(){
+  b.useObservable([storage]);
+  var children=[
+   txt("Metadata Lens",{color:"#FFFFFF",fontSize:20,fontWeight:"700",marginBottom:8},"title"),
+   txt("Read-only view of channel metadata already available to your account. It does not reveal hidden channels or bypass permissions.",{color:"#B9BBC1",fontSize:13,marginBottom:12},"info"),
+   React.createElement(RN.Pressable,{key:"scan",onPress:function(){try{storage.report=scan();storage.error=null}catch(e){storage.report=null;storage.error=String(e&&e.message||e)}},style:{backgroundColor:"#5865F2",padding:12,borderRadius:8,marginBottom:12}},txt("Scan accessible channels",{color:"#FFFFFF",fontSize:14,fontWeight:"700",textAlign:"center",marginBottom:0},"scanlabel"))
+  ];
+  if(storage.error)children.push(txt("Scan stopped: "+storage.error,{color:"#F0B232"},"error"));
+  var report=storage.report;
+  if(report){
+   children.push(txt("Servers: "+report.guilds.length+" | Accessible channels: "+report.count+" | "+report.time,{color:"#FFFFFF",fontWeight:"700",marginBottom:10},"summary"));
+   report.guilds.forEach(function(guild){
+    children.push(txt(guild.name+"  •  Server ID: "+guild.id,{color:"#FFFFFF",fontSize:15,fontWeight:"700",marginTop:10,marginBottom:6},"g"+guild.id));
+    guild.channels.forEach(function(ch){
+     children.push(txt("# "+ch.name+"  ("+ch.type+")",{color:"#DCDDDE",fontSize:13,marginBottom:2},"c"+ch.id));
+     children.push(txt("ID: "+ch.id+" | Category: "+ch.parent+(ch.parentId?" ["+ch.parentId+"]":"")+" | Overwrites: "+ch.overwrites,{color:"#AEB2B8",fontSize:11,marginBottom:7},"d"+ch.id));
+    });
+   });
+  }else if(!storage.error){children.push(txt("No scan has been run yet.",{color:"#B9BBC1"},"empty"))}
+  return React.createElement(RN.ScrollView,{contentContainerStyle:{padding:16}},children);
+ }
+});
+}(bunny._jsx,bunny.api.assets,bunny.api.patcher,bunny.metro,bunny.metro.common.components,bunny.utils,bunny.plugin,bunny.api.storage);
