@@ -1,0 +1,19 @@
+{
+  "spec": 3,
+  "type": "plugin",
+  "id": "m1nx.metadata-lens",
+  "version": "0.1.0",
+  "display": {
+    "name": "Metadata Lens",
+    "description": "Read-only inspection of accessible channel IDs, types, category relationships, and permission-overwrite counts.",
+    "authors": [
+      {
+        "name": "m1nx799"
+      }
+    ]
+  },
+  "main": "index.js",
+  "extras": {
+    "bunny": {}
+  }
+}
