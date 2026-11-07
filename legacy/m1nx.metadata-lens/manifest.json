@@ -1,12 +1,12 @@
 {
   "name": "Metadata Lens",
-  "description": "Read-only inspection of channel metadata already accessible to the logged-in account.",
+  "description": "Advanced read-only inspection of locally cached channel and permission metadata.",
   "authors": [
     {
       "name": "m1nx799"
     }
   ],
   "main": "index.js",
-  "hash": "local-overlay-3aadc67a142935f52a7e94f9b0d646519d17fc15",
+  "hash": "advanced-cache-8b605fd3cc1d6b9771b5ef6b73a75606fb709442",
   "vendetta": {}
 }
